@@ -10,6 +10,7 @@ pub struct Lowerer {
     pub funs: IdGen<FunName>,
     pub blocks: IdGen<BlockName>,
     program: Program,
+    extern_names: std::collections::HashSet<FunName>,
 }
 
 /// Indicates whether the expression being compiled is in a tail position.
@@ -22,7 +23,7 @@ enum Continuation {
 impl From<Resolver> for Lowerer {
     fn from(resolver: Resolver) -> Self {
         let Resolver { vars, funs, .. } = resolver;
-        Lowerer { vars, funs, blocks: IdGen::new(), program: Program { externs: Vec::new(), funs: Vec::new(), blocks: Vec::new() } }
+        Lowerer { vars, funs, blocks: IdGen::new(), program: Program { externs: Vec::new(), funs: Vec::new(), blocks: Vec::new() }, extern_names: std::collections::HashSet::<FunName>::new() }
     }
 }
 
@@ -41,13 +42,14 @@ impl Lowerer {
 
         for ext in externs {
             let (v, _l): (Vec<VarName>, Vec<SrcLoc>) = ext.params.into_iter().unzip();
+            self.extern_names.insert(ext.name.clone());
             self.program.externs.push( Extern { name: ext.name, params: v} )
         }
 
         let main_body = self.blocks.fresh("main_tail");
         self.program.funs.push( FunBlock { name, params: vec![param.0.clone()], body: Branch { target: main_body.clone(), args: vec![Immediate::Var(param.0.clone())]}} );
 
-        let body = BasicBlock { label: main_body, params: vec![param.0.clone()], body: self.lower_expr_kont(body, Continuation::Return) };
+        let body = BasicBlock { label: main_body, params: vec![param.0.clone()], body: self.lower_expr_kont(body, Continuation::Return, vec![param.0.clone()], true) };
         self.program.blocks.push(body);
 
         self.program.clone()
@@ -55,7 +57,7 @@ impl Lowerer {
 
     /// Compiles an expression to a basic block that uses the continuation k on
     /// the value e produces.
-    fn lower_expr_kont(&mut self, e: BoundExpr, k: Continuation) -> BlockBody {
+    fn lower_expr_kont(&mut self, e: BoundExpr, k: Continuation, params: Vec<VarName>, is_tail: bool) -> BlockBody {
         let dest: VarName;
         let next_body: BlockBody;
         match k {
@@ -101,6 +103,8 @@ impl Lowerer {
                                 next: Box::new(next_body),
                             },
                         ),
+                        params,
+                        false,
                     )
                 }
                 ast::Prim::Sub1 => {
@@ -119,6 +123,8 @@ impl Lowerer {
                                 next: Box::new(next_body),
                             },
                         ),
+                        params,
+                        false,
                     )
                 }
                 ast::Prim::Add => {
@@ -138,8 +144,10 @@ impl Lowerer {
                                 next: Box::new(next_body),
                             },
                         ),
+                        params.clone(),
+                        false,
                     );
-                    self.lower_expr_kont(args[0].clone(), Continuation::Block(tmp1, block_body))
+                    self.lower_expr_kont(args[0].clone(), Continuation::Block(tmp1, block_body), params, false)
                 }
                 ast::Prim::Sub => {
                     let tmp1 = self.vars.fresh("sub_arg1");
@@ -158,8 +166,10 @@ impl Lowerer {
                                 next: Box::new(next_body),
                             },
                         ),
+                        params.clone(),
+                        false,
                     );
-                    self.lower_expr_kont(args[0].clone(), Continuation::Block(tmp1, block_body))
+                    self.lower_expr_kont(args[0].clone(), Continuation::Block(tmp1, block_body), params, false,)
                 }
                 ast::Prim::Mul => {
                     let tmp1 = self.vars.fresh("mul_arg1");
@@ -178,8 +188,10 @@ impl Lowerer {
                                 next: Box::new(next_body),
                             },
                         ),
+                        params.clone(),
+                        false,
                     );
-                    self.lower_expr_kont(args[0].clone(), Continuation::Block(tmp1, block_body))
+                    self.lower_expr_kont(args[0].clone(), Continuation::Block(tmp1, block_body), params, false)
                 }
                 ast::Prim::Not => {
                     let tmp1 = self.vars.fresh("not_arg");
@@ -202,6 +214,8 @@ impl Lowerer {
                                 }),
                             },
                         ),
+                        params,
+                        false,
                     )
                 }
                 ast::Prim::And => {
@@ -237,8 +251,10 @@ impl Lowerer {
                                 }),
                             },
                         ),
+                        params.clone(),
+                        false,
                     );
-                    self.lower_expr_kont(args[0].clone(), Continuation::Block(and1, block_body))
+                    self.lower_expr_kont(args[0].clone(), Continuation::Block(and1, block_body), params, false)
                 }
                 ast::Prim::Or => {
                     let or1 = self.vars.fresh("or_arg1");
@@ -273,8 +289,10 @@ impl Lowerer {
                                 }),
                             },
                         ),
+                        params.clone(),
+                        false
                     );
-                    self.lower_expr_kont(args[0].clone(), Continuation::Block(or1, block_body))
+                    self.lower_expr_kont(args[0].clone(), Continuation::Block(or1, block_body), params, false)
                 }
                 ast::Prim::Lt => {
                     let tmp1 = self.vars.fresh("lt_arg1");
@@ -293,8 +311,10 @@ impl Lowerer {
                                 next: Box::new(next_body),
                             },
                         ),
+                        params.clone(),
+                        false,
                     );
-                    self.lower_expr_kont(args[0].clone(), Continuation::Block(tmp1, block_body))
+                    self.lower_expr_kont(args[0].clone(), Continuation::Block(tmp1, block_body), params, false)
                 }
                 ast::Prim::Le => {
                     let tmp1 = self.vars.fresh("le_arg1");
@@ -313,8 +333,10 @@ impl Lowerer {
                                 next: Box::new(next_body),
                             },
                         ),
+                        params.clone(),
+                        false,
                     );
-                    self.lower_expr_kont(args[0].clone(), Continuation::Block(tmp1, block_body))
+                    self.lower_expr_kont(args[0].clone(), Continuation::Block(tmp1, block_body), params, false)
                 }
                 ast::Prim::Gt => {
                     let tmp1 = self.vars.fresh("gt_arg1");
@@ -333,8 +355,10 @@ impl Lowerer {
                                 next: Box::new(next_body),
                             },
                         ),
+                        params.clone(),
+                        false,
                     );
-                    self.lower_expr_kont(args[0].clone(), Continuation::Block(tmp1, block_body))
+                    self.lower_expr_kont(args[0].clone(), Continuation::Block(tmp1, block_body), params, false)
                 }
                 ast::Prim::Ge => {
                     let tmp1 = self.vars.fresh("ge_arg1");
@@ -353,8 +377,10 @@ impl Lowerer {
                                 next: Box::new(next_body),
                             },
                         ),
+                        params.clone(),
+                        false,
                     );
-                    self.lower_expr_kont(args[0].clone(), Continuation::Block(tmp1, block_body))
+                    self.lower_expr_kont(args[0].clone(), Continuation::Block(tmp1, block_body), params, false)
                 }
                 ast::Prim::Eq => {
                     let tmp1 = self.vars.fresh("eq_arg1");
@@ -373,8 +399,10 @@ impl Lowerer {
                                 next: Box::new(next_body),
                             },
                         ),
+                        params.clone(),
+                        false,
                     );
-                    self.lower_expr_kont(args[0].clone(), Continuation::Block(tmp1, block_body))
+                    self.lower_expr_kont(args[0].clone(), Continuation::Block(tmp1, block_body), params, false)
                 }
                 ast::Prim::Neq => {
                     let tmp1 = self.vars.fresh("neq_arg1");
@@ -393,8 +421,9 @@ impl Lowerer {
                                 next: Box::new(next_body),
                             },
                         ),
+                        params.clone(), false,
                     );
-                    self.lower_expr_kont(args[0].clone(), Continuation::Block(tmp1, block_body))
+                    self.lower_expr_kont(args[0].clone(), Continuation::Block(tmp1, block_body), params, false)
                 }
             },
             Expr::Let {
@@ -414,6 +443,8 @@ impl Lowerer {
                             next: Box::new(next_body),
                         },
                     ),
+                    params.clone(),
+                    is_tail,
                 );
 
                 // iterate over bindings in reverse, linking to the blockbody which should be executed next
@@ -421,6 +452,8 @@ impl Lowerer {
                     let current_block_body = self.lower_expr_kont(
                         binding.expr.clone(),
                         Continuation::Block(binding.var.0.clone(), next_block_body),
+                        params.clone(),
+                        false,
                     );
                     next_block_body = current_block_body;
                 }
@@ -444,6 +477,8 @@ impl Lowerer {
                             els: els_label.clone(),
                         }),
                     ),
+                    params.clone(),
+                    false,
                 );
 
                 BlockBody::SubBlocks {
@@ -462,6 +497,8 @@ impl Lowerer {
                                                 args: vec![Immediate::Var(thn_value)],
                                             })),
                                         ),
+                                        params.clone(),
+                                        is_tail,
                                     )
                                 },
                             },
@@ -478,6 +515,8 @@ impl Lowerer {
                                                 args: vec![Immediate::Var(els_value)],
                                             })),
                                         ),
+                                        params,
+                                        is_tail,
                                     )
                                 },
                             },
@@ -492,41 +531,71 @@ impl Lowerer {
                 }
             }
             Expr::FunDefs { decls, body, .. } => {
-                let mut b = Vec::<BasicBlock>::new();
                 for fun in decls {
-                    let (v, _l): (Vec<VarName>, Vec<SrcLoc>) =
-                        fun.params.clone().into_iter().unzip();
-                    b.push(BasicBlock {
-                        label: fun.name,
-                        params: v,
-                        body: self.lower_expr_kont(fun.body, Continuation::Return),
-                    }) // assumes all functions are tail called
+                    // get params for function and functions in scope at decl
+                    let (v, _l): (Vec<VarName>, Vec<SrcLoc>) = fun.params.clone().into_iter().unzip();
+                    let mut fun_params = params.clone();
+                    fun_params.extend(v);
+
+                    let fun_body_name = self.blocks.fresh(fun.name.to_string() + "_tail");
+                    let mut fun_args = Vec::<Immediate>::new();
+                    for p in fun_params.clone() {
+                        fun_args.push(Immediate::Var(p));
+                    }
+
+                    // add function and its body to program
+                    self.program.funs.push(FunBlock {name: fun.name, params: fun_params.clone() , body: Branch { target: fun_body_name.clone(), args: fun_args}});
+                    
+                    let fun_body = BasicBlock { label: fun_body_name, params: fun_params, body: self.lower_expr_kont(fun.body, Continuation::Return, params.clone(), true)};
+                    self.program.blocks.push(fun_body);
+
                 }
-                BlockBody::SubBlocks {
-                    blocks: b,
-                    next: Box::new(
-                        self.lower_expr_kont(*body, Continuation::Block(dest, next_body)),
-                    ),
-                }
+
+                self.lower_expr_kont(*body, Continuation::Block(dest, next_body), params, is_tail)
             }
             Expr::Call { fun, args, .. } => {
                 let mut a = Vec::<Immediate>::new();
                 let mut arg_values = Vec::<VarName>::new();
-                for _arg in args.clone() {
+                let mut target = self.blocks.fresh("if you see this then call didnt find the function");
+
+                // find the function in program
+                for fun_decl in self.program.funs.clone() {
+                    if fun == fun_decl.name {
+                        target = fun_decl.body.target;
+
+                        // add args from functions in scope at decl
+                        for i in params.iter().take(fun_decl.params.len() - args.len()) {
+                            arg_values.push(i.clone());
+                            a.push(Immediate::Var(i.clone()));
+                        }
+
+                        break;
+                    }
+                }
+
+                for _i in 0..args.len() {
                     let arg_value = self.vars.fresh("arg_value");
                     arg_values.push(arg_value.clone());
                     a.push(Immediate::Var(arg_value));
                 }
 
-                let mut next_block_body = BlockBody::Terminator(Terminator::Branch(Branch {
-                    target: fun,
+                let mut next_block_body = if is_tail && !self.extern_names.contains(&fun) {
+                    BlockBody::Terminator(Terminator::Branch(Branch {
+                    target,
                     args: a,
-                }));
+                    })) 
+                } else {
+                    BlockBody::Operation {
+                        dest,
+                        op: Operation::Call { fun, args: a },
+                        next: Box::new(next_body),
+                    }
+                };
 
                 // iterate over arguments in reverse
                 for (arg, arg_value) in args.into_iter().rev().zip(arg_values.into_iter().rev()) {
                     next_block_body =
-                        self.lower_expr_kont(arg, Continuation::Block(arg_value, next_block_body));
+                        self.lower_expr_kont(arg, Continuation::Block(arg_value, next_block_body), params.clone(), false);
                 }
                 next_block_body
             }
