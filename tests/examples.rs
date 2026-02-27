@@ -64,6 +64,10 @@ mk_fail_test!(free, "free.adder", "variable \"z\" unbound");
 
 mk_fail_test!(let_dupe, "let_dupe.adder", "\"x\" defined twice in let-expression");
 
+mk_test!(test_countdown, "countdown.cobra", "5", "0");
+
+mk_test!(test_nested_funs, "nested.cobra", "5", "10");
+
 /* ----------------------- Public Cobra Tests ---------------------- */
 mod public_cobra {
     use super::*;

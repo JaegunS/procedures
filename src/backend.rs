@@ -8,6 +8,7 @@ use crate::middle_end::Lowerer;
 use crate::ssa::*;
 
 use im::HashMap;
+use im::HashSet;
 
 pub struct Emitter {
     // the output buffer for the sequence of instructions we are generating
@@ -83,6 +84,11 @@ impl Emitter {
     }
 
     pub fn emit_prog(&mut self, prog: &Program) {
+        let top_level_labels: HashSet<String> = prog.blocks
+            .iter()
+            .map(|b| b.label.to_string())
+            .collect();
+
         // externs
         for ext in &prog.externs {
             self.emit(Instr::Extern(ext.name.to_string()));
@@ -116,7 +122,10 @@ impl Emitter {
             self.emit(Instr::Mov(MovArgs::ToReg(Reg::Rbp, Arg64::Reg(Reg::Rsp))));
             self.emit(Instr::Sub(BinArgs::ToReg(Reg::Rsp, Arg32::Signed(next_offset as i32))));
 
-            self.emit_body(&block.body, &variables, &block_map, next_offset);
+            // for tail calls, skip the prologue
+            self.emit(Instr::Label(format!("{}_body", block.label)));
+
+            self.emit_body(&block.body, &variables, &block_map, next_offset, &top_level_labels);
 
             // epilogue label
             // each needs their own leave label
@@ -129,7 +138,7 @@ impl Emitter {
     }
 
     // delegator
-    fn emit_body(&mut self, body: &BlockBody, variables: &HashMap<VarName, i64>, blocks: &HashMap<BlockName, &BasicBlock>, next_offset: i64) {
+    fn emit_body(&mut self, body: &BlockBody, variables: &HashMap<VarName, i64>, blocks: &HashMap<BlockName, &BasicBlock>, next_offset: i64, top_level_labels: &HashSet<String>) {
         match body {
             BlockBody::Terminator(terminator) => {
                 match terminator {
@@ -141,14 +150,16 @@ impl Emitter {
                     }
                     Terminator::Branch(branch) => {
                         let target_block = blocks.get(&branch.target).expect("block not found");
-                        // eval each argument
                         for (arg, param_name) in branch.args.iter().zip(target_block.params.iter()) {
                             self.emit_imm(arg, Reg::Rax, variables);
                             self.store_rax(param_name, variables);
                         }
-
-                        // jump to target
-                        self.emit(Instr::Jmp(JmpArgs::Label(branch.target.to_string())));
+                        let target_label = if top_level_labels.contains(&branch.target.to_string()) {
+                            format!("{}_body", branch.target)
+                        } else {
+                            branch.target.to_string()
+                        };
+                        self.emit(Instr::Jmp(JmpArgs::Label(target_label)));
                     }
                     Terminator::ConditionalBranch { cond, thn, els } => {
                         // evaluate the condition
@@ -168,7 +179,7 @@ impl Emitter {
 
             BlockBody::Operation { dest, op, next } => {
                 self.emit_op(op, dest, variables, next_offset);
-                self.emit_body(next, variables, blocks, next_offset);
+                self.emit_body(next, variables, blocks, next_offset, top_level_labels);
             }
 
             BlockBody::SubBlocks { blocks: sub_blocks, next } => {
@@ -182,12 +193,12 @@ impl Emitter {
                 }
 
                 // continue with next
-                self.emit_body(next, variables, &block_map, next_offset);
+                self.emit_body(next, variables, &block_map, next_offset, top_level_labels);
 
                 // emit each basic block
                 for block in sub_blocks {
                     self.emit(Instr::Label(block.label.to_string()));
-                    self.emit_body(&block.body, variables, &block_map, next_offset);
+                    self.emit_body(&block.body, variables, &block_map, next_offset, top_level_labels);
                 }
             }
         }

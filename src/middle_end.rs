@@ -546,9 +546,11 @@ impl Lowerer {
                     // add function and its body to program
                     self.program.funs.push(FunBlock {name: fun.name, params: fun_params.clone() , body: Branch { target: fun_body_name.clone(), args: fun_args}});
                     
-                    let fun_body = BasicBlock { label: fun_body_name, params: fun_params, body: self.lower_expr_kont(fun.body, Continuation::Return, params.clone(), true)};
+                    let fun_body = BasicBlock { label: fun_body_name, params: fun_params.clone(), body: self.lower_expr_kont(fun.body.clone(), Continuation::Return, fun_params.clone(), true)};
                     self.program.blocks.push(fun_body);
 
+                    eprintln!("fun_params: {:?}", fun_params);
+                    eprintln!("fun.body: {:?}", fun.body);
                 }
 
                 self.lower_expr_kont(*body, Continuation::Block(dest, next_body), params, is_tail)
