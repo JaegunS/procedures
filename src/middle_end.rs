@@ -31,9 +31,72 @@ impl From<Resolver> for Lowerer {
 /// Determine which functions should be lambda lifted.
 /// If you skip this (which is totally fine), the default implementation
 /// should lift all functions that are defined.
-fn should_lift(_prog: &BoundProg) -> std::collections::HashSet<FunName> {
-    todo!("should_lift not implemented")
-    // lift all non-tailed called functions and functions called by lifted functions
+fn should_lift(prog: &BoundProg) -> std::collections::HashSet<FunName> {
+    let mut lifted = std::collections::HashSet::new();
+    let mut callers = std::collections::HashMap::<FunName, std::collections::HashSet<FunName>>::new();
+
+    fn visit(expr: &BoundExpr, is_tail: bool, current_fun: Option<&FunName>, lifted: &mut std::collections::HashSet<FunName>, callers: &mut std::collections::HashMap<FunName, std::collections::HashSet<FunName>>) {
+        match expr {
+            Expr::Num(_, _) | Expr::Bool(_, _) | Expr::Var(_, _) => {}
+            Expr::Prim { args, .. } => {
+                for arg in args {
+                    visit(arg, false, current_fun, lifted, callers);
+                }
+            }
+            Expr::Let { bindings, body, .. } => {
+                for bind in bindings {
+                    visit(&bind.expr, false, current_fun, lifted, callers);
+                }
+                visit(body, is_tail, current_fun, lifted, callers);
+            }
+            Expr::If { cond, thn, els, .. } => {
+                visit(cond, false, current_fun, lifted, callers);
+                visit(thn, is_tail, current_fun, lifted, callers);
+                visit(els, is_tail, current_fun, lifted, callers);
+            }
+            Expr::FunDefs { decls, body, .. } => {
+                for decl in decls {
+                    visit(&decl.body, true, Some(&decl.name), lifted, callers);
+                }
+                visit(body, is_tail, current_fun, lifted, callers);
+            }
+            Expr::Call { fun, args, .. } => {
+                for arg in args {
+                    visit(arg, false, current_fun, lifted, callers);
+                }
+                if !is_tail {
+                    lifted.insert(fun.clone());
+                }
+                if let Some(cf) = current_fun {
+                    callers.entry(cf.clone()).or_default().insert(fun.clone());
+                }
+            }
+        }
+    }
+
+    visit(&prog.body, true, None, &mut lifted, &mut callers);
+
+    let mut changed = true;
+    while changed {
+        changed = false;
+        let mut new_lifted = Vec::new();
+        for lf in &lifted {
+            if let Some(callees) = callers.get(lf) {
+                for callee in callees {
+                    if !lifted.contains(callee) {
+                        new_lifted.push(callee.clone());
+                        changed = true;
+                    }
+                }
+            }
+        }
+        for nf in new_lifted {
+            lifted.insert(nf);
+        }
+    }
+
+    // always lift the entry point just in case? No, entry is top-level.
+    lifted
 }
 
 impl Lowerer {

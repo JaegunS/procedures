@@ -257,9 +257,9 @@ impl Emitter {
 
                 let l = next_offset / 8; // number of local variable slots
                 let a = stack_args.len() as i64;
-                let p = if (l + a) % 2 == 0 { 1i64 } else { 0 };
+                let p = a % 2;
 
-                assert!((l + p + a) % 2 == 1, "stack misaligned before call");
+                assert!((p + a) % 2 == 0, "stack misaligned before call");
 
                 // register-passed args: load into rax first to avoid clobbering
                 // (e.g. rdi might itself be a variable we need to read)
