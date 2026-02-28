@@ -95,7 +95,6 @@ fn should_lift(prog: &BoundProg) -> std::collections::HashSet<FunName> {
         }
     }
 
-    // always lift the entry point just in case? No, entry is top-level.
     lifted
 }
 
@@ -510,6 +509,11 @@ impl Lowerer {
                 body,
                 loc: _,
             } => {
+                let mut let_params = params.clone();
+                for bind in bindings.iter() {
+                    let_params.push(bind.var.0.clone());
+                }
+
                 // create blockbody for the body of let
                 let body_value = self.vars.fresh("let_body_value");
                 let mut next_block_body = self.lower_expr_kont(
@@ -522,17 +526,18 @@ impl Lowerer {
                             next: Box::new(next_body),
                         },
                     ),
-                    params.clone(),
+                    let_params.clone(),
                     is_tail,
                     current_fun
                 );
 
                 // iterate over bindings in reverse, linking to the blockbody which should be executed next
                 for binding in bindings.iter().rev() {
+                    let_params.pop();
                     let current_block_body = self.lower_expr_kont(
                         binding.expr.clone(),
                         Continuation::Block(binding.var.0.clone(), next_block_body),
-                        params.clone(),
+                        let_params.clone(),
                         false,
                         current_fun
                     );

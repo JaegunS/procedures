@@ -84,6 +84,8 @@ mk_test!(test_loop, "loop.cobra", "5", "0");
 
 mk_test!(test_loop_acc, "loop_acc.cobra", "5", "15");
 
+mk_middle_end_test!(test_man_loc_cap, "manual_local_capture.cobra", "5", "20");
+
 /* ----------------------- Public Cobra Tests ---------------------- */
 mod public_cobra {
     use super::*;

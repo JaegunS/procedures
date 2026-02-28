@@ -1,0 +1,4 @@
+def main(x):
+  let z = x + 10 in
+  def f(y): z + y
+  in f(x)
