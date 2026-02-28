@@ -1,0 +1,5 @@
+def main(x):
+  def f(n):
+    x + n
+  in f(5)
+

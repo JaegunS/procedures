@@ -37,20 +37,23 @@ impl Emitter {
     fn collect_variables(&mut self, body: &BlockBody, variables: &mut HashMap<VarName, i64>, next_offset: &mut i64) {
         match body {
             BlockBody::Terminator(_) => {}
-
             BlockBody::Operation { dest, next, .. } => {
-                variables.insert(dest.clone(), *next_offset);
-                *next_offset += 8;
+                if !variables.contains_key(dest) {
+                    variables.insert(dest.clone(), *next_offset);
+                    *next_offset += 8;
+                }
                 self.collect_variables(next, variables, next_offset);
             }
-
             BlockBody::SubBlocks { blocks, next } => {
                 // collect variables from all basic blocks
                 for block in blocks {
                     // collect block parameters
                     for param in &block.params {
-                        variables.insert(param.clone(), *next_offset);
-                        *next_offset += 8;
+                        if !variables.contains_key(param) {
+
+                            variables.insert(param.clone(), *next_offset);
+                            *next_offset += 8;
+                        }
                     }
                     // collect variables from block body
                     self.collect_variables(&block.body, variables, next_offset);
@@ -65,20 +68,27 @@ impl Emitter {
         let mut variables: HashMap<VarName, i64> = HashMap::new();
         let mut next_offset: i64 = 8;
 
+        let insert = |variables: &mut HashMap<VarName, i64>, next_offset: &mut i64, var: &VarName| {
+            if !variables.contains_key(var) {
+                variables.insert(var.clone(), *next_offset);
+                *next_offset += 8;
+            }
+        };
+
         for fun in &prog.funs {
             for param in &fun.params {
-                variables.insert(param.clone(), next_offset);
-                next_offset += 8;
+                insert(&mut variables, &mut next_offset, param);
             }
         }
 
         for block in &prog.blocks {
             for param in &block.params {
-                variables.insert(param.clone(), next_offset);
-                next_offset += 8;
+                insert(&mut variables, &mut next_offset, param);
             }
             self.collect_variables(&block.body, &mut variables, &mut next_offset);
         }
+
+        eprintln!("variables: {:?}", variables);
 
         (variables, next_offset)
     }
@@ -149,7 +159,11 @@ impl Emitter {
                         self.emit(Instr::Ret);
                     }
                     Terminator::Branch(branch) => {
-                        let target_block = blocks.get(&branch.target).expect("block not found");
+                        let target_block = blocks.get(&branch.target).unwrap_or_else(|| {
+                            eprintln!("block not found: {}", branch.target);
+                            eprintln!("available blocks: {:?}", blocks.keys().collect::<Vec<_>>());
+                            panic!("block not found");
+                        });
                         for (arg, param_name) in branch.args.iter().zip(target_block.params.iter()) {
                             self.emit_imm(arg, Reg::Rax, variables);
                             self.store_rax(param_name, variables);

@@ -1,0 +1,4 @@
+def main(x):
+  def loop(n, acc): if n == 0: acc else: loop(n - 1, acc + n)
+in loop(x, 0)
+

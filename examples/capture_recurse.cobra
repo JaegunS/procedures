@@ -1,0 +1,7 @@
+def main(x):
+  def f(n):
+    if n == 0:
+      0
+    else:
+      x + f(n - 1)
+  in f(3)

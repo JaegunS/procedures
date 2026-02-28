@@ -68,6 +68,22 @@ mk_test!(test_countdown, "countdown.cobra", "5", "0");
 
 mk_test!(test_nested_funs, "nested.cobra", "5", "10");
 
+mk_test!(test_fn_own_param, "own_param.cobra", "5", "6");
+
+mk_test!(test_fn_capture_only, "capture_only.cobra", "7", "7");
+
+mk_test!(test_fn_param_and_capture, "param_and_cap.cobra", "10", "15");
+
+mk_test!(test_fn_two_params, "two_params.cobra", "0", "3");
+
+mk_test!(test_capture_recurse, "capture_recurse.cobra", "2", "6");
+
+mk_test!(test_mutual_capture, "mutual_capture.cobra", "4", "4");
+
+mk_test!(test_loop, "loop.cobra", "5", "0");
+
+mk_test!(test_loop_acc, "loop_acc.cobra", "5", "15");
+
 /* ----------------------- Public Cobra Tests ---------------------- */
 mod public_cobra {
     use super::*;

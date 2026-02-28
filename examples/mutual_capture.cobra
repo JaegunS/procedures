@@ -1,0 +1,4 @@
+def main(x):
+  def even(n): if n == 0: x else: odd(n - 1)
+  and def odd(n): if n == 0: 0 else: even(n - 1)
+in even(4)
